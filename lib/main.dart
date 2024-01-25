@@ -1,4 +1,6 @@
- 
+
+
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -19,7 +21,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      debugShowCheckedModeBanner: false, 
+      debugShowCheckedModeBanner: false,
       home: MyHomePage(),
     );
   }
@@ -36,6 +38,8 @@ class _MyHomePageState extends State<MyHomePage> {
     late BluetoothConnection connection;
     late List<BluetoothDevice> _devicesList = [];
     List <Map<String, String>> inComingData = [];
+
+    StreamSubscription<List<int>>? dataSubscription;
 
     bool devicesLoad = false;
     bool get isConnected => connection.isConnected;
@@ -105,62 +109,91 @@ Future<List<BluetoothDevice>> getPairedDevices() async {
       listenForData();
     });
   }
+  void ResumeForData(){
+    dataSubscription?.resume();
+  }
 
-  void listenForData(){
-     String currentData = '';
+  void funcTread(){
+
+  }
+
+  void listenForData(){  
+      String Datatype = '' ;
+      bool IsPressure = false;
+
     connection.input!.listen((Uint8List data) {
-      String currentNumbers = '' ;
+      bool valido = false;
       String serialData = ascii.decode(data);
-      print("SERIAL DATA  ${serialData}");
 
+      if(serialData[0].contains('T')){
+        Datatype = '';
+        IsPressure = false;
+      }
+      if(serialData[0].contains('P')){
+        Datatype = '';
+        IsPressure = true;
+      }
+
+      if(!IsPressure){
+      for (int i = 0; i < serialData.length; i++) {
+        Datatype = Datatype + serialData[i];
+      }
+      if(Datatype.length >= 5){
+        valido = true;
+      }
+      }else{
         for (int i = 0; i < serialData.length; i++) {
-      if (serialData[i] != 'T') {
-          currentData = currentData + serialData[i];
-       }else{
-        currentNumbers = currentData;
-        currentData = '';
-       //   print(currentNumbers);
-       }
-        }
-               showSnackBar('Recibiendo datos $currentNumbers');
-      setState(() {
+        Datatype = Datatype + serialData[i];
+      }
+        if(Datatype.length >= 6){
+        valido = true;
+      }
+      }
+
+
+     if(valido){
+          showSnackBar('Recibiendo datos $Datatype');
+        setState(() {
         inComingData.insert(0,
           {
             "time": DateFormat('HH:mm:ss').format(DateTime.now()),
-            "data": currentNumbers
+            "data": Datatype
           });
+           valido = false;
+          Datatype = '';
+          serialData = '';
+          data = Uint8List.fromList([]);
+          IsPressure= false;
+          Future.delayed( const Duration(milliseconds: 2             
+        ), () {
+          listenForData();
+        });
       });
-    
-      connection.output.add(data);
-      
+        }
+       
       if (ascii.decode(data).contains('!')) {
-        connection.finish();
-        print('Disconnecting by local host');
-      }
-    }).onDone(() {
-      print('Disconnected by remote request');
-    });
-  }
+      dataSubscription?.cancel(); // Cancelar la suscripción cuando se encuentra '!'.
+      connection.finish();
+      print('Disconnecting by local host');
+    }
+  }, onDone: () {
+    print('Disconnected by remote request');
+  });
+}
 
+//Para enviar comandos al dispositivo
  void sendMessageBluetooth() async {
   try {
     print('Sending data');
     showSnackBar('Enviando datos');
     // Adjust command string based on device requirements
-    String command = "X330.92 \r\n."; // Use appropriate terminator if needed
-    Uint8List commandData = Uint8List.fromList(utf8.encode(command));
-    connection.output.add(commandData);
-    await connection.output.allSent; // Wait for data to be sent
+    connection.output.add(Uint8List.fromList(utf8.encode("X4" "\r\n")));
+      await connection.output.allSent;// Wait for data to be sent
 
     // Optionally flush the output stream
    // connection.output.flush();
+
   } catch (error) {
-
-
-
-
-
-
     print('Error sending command: $error');
     // Handle the error appropriately
   }
@@ -204,7 +237,7 @@ Future<List<BluetoothDevice>> getPairedDevices() async {
                     width: 1,
                   ),
                 ),
-                
+
                 height: 200,
                 width: double.infinity,
                 child:
@@ -238,8 +271,8 @@ Future<List<BluetoothDevice>> getPairedDevices() async {
                SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: devicesMacAddress.isNotEmpty ? () => sendMessageBluetooth() : null,
-                  child: const Text('Apagar')
+                  onPressed: devicesMacAddress.isNotEmpty ? () => ResumeForData(): null,
+                  child: const Text('Capturar datos')
                 ),
               ),
               if(devicesMacAddress.isNotEmpty)const Padding(
